@@ -1,0 +1,497 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// Enums
+enum Role {
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  STAFF
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum PartyType {
+  DEBTOR
+  CREDITOR
+  EMPLOYEE
+}
+
+enum BalanceType {
+  DEBIT
+  CREDIT
+}
+
+enum SalaryFrequency {
+  MONTHLY
+  WEEKLY
+  DAILY
+}
+
+enum InvoiceType {
+  SALE
+  PURCHASE
+  SALE_RETURN
+  PURCHASE_RETURN
+  EXPENSE
+}
+
+enum PaymentType {
+  CASH
+  CREDIT
+  BANK
+  CHEQUE
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK
+  CHEQUE
+}
+
+enum TransactionType {
+  INFLOW
+  OUTFLOW
+}
+
+enum CapitalTransactionType {
+  CASH
+  STOCK
+  WITHDRAWAL
+}
+
+enum StockMovementType {
+  SALE
+  PURCHASE
+  SALE_RETURN
+  PURCHASE_RETURN
+  CAPITAL
+  ADJUSTMENT
+}
+
+// Models
+
+model Business {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(255)
+  address         String?  @db.Text
+  phone           String?  @db.VarChar(50)
+  email           String?  @db.VarChar(255)
+  taxId           String?  @map("tax_id") @db.VarChar(100)
+  fiscalYearStart DateTime? @map("fiscal_year_start") @db.Date
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  users           User[]
+  accounts        Account[]
+  products        Product[]
+  parties         Party[]
+  expenseCategories ExpenseCategory[]
+  invoices        Invoice[]
+  journalEntries  JournalEntry[]
+  cashFlows       CashFlowTransaction[]
+  capitalTrx      CapitalTransaction[]
+
+  @@map("businesses")
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  businessId    String?   @map("business_id") @db.Uuid
+  business      Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email         String    @unique @db.VarChar(255)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  fullName      String    @map("full_name") @db.VarChar(255)
+  role          Role
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLogin     DateTime? @map("last_login")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  createdInvoices        Invoice[]
+  createdExpensePayments ExpenseInvoicePayment[]
+  createdJournalEntries  JournalEntry[]
+  createdCashFlows       CashFlowTransaction[]
+  createdCapitalTrx      CapitalTransaction[]
+
+  @@index([businessId])
+  @@index([email])
+  @@map("users")
+}
+
+model AccountType {
+  id            Int           @id @default(autoincrement())
+  name          String        @db.VarChar(100)
+  normalBalance NormalBalance @map("normal_balance")
+
+  accounts Account[]
+
+  @@map("account_types")
+}
+
+model Account {
+  id              String   @id @default(uuid()) @db.Uuid
+  businessId      String?  @map("business_id") @db.Uuid
+  business        Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  accountCode     String   @map("account_code") @db.VarChar(50)
+  accountName     String   @map("account_name") @db.VarChar(255)
+  accountTypeId   Int?     @map("account_type_id")
+  accountType     AccountType? @relation(fields: [accountTypeId], references: [id])
+  parentAccountId String?  @map("parent_account_id") @db.Uuid
+  parentAccount   Account? @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  childAccounts   Account[] @relation("AccountHierarchy")
+  description     String?  @db.Text
+  currentBalance  Decimal  @default(0) @map("current_balance") @db.Decimal(15, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  isSystemAccount Boolean  @default(false) @map("is_system_account")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  expenseCategories    ExpenseCategory[]
+  journalEntryLines    JournalEntryLine[]
+  cashFlowFromAccounts CashFlowTransaction[] @relation("CashFlowFrom")
+  cashFlowToAccounts   CashFlowTransaction[] @relation("CashFlowTo")
+
+  @@unique([businessId, accountCode])
+  @@index([businessId])
+  @@index([accountCode])
+  @@index([accountTypeId])
+  @@index([parentAccountId])
+  @@map("accounts")
+}
+
+model Product {
+  id           String   @id @default(uuid()) @db.Uuid
+  businessId   String?  @map("business_id") @db.Uuid
+  business     Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name         String   @db.VarChar(255)
+  sku          String?  @db.VarChar(100)
+  barcode      String?  @db.VarChar(100)
+  description  String?  @db.Text
+  category     String?  @db.VarChar(100)
+  unit         String?  @db.VarChar(50)
+  costPrice    Decimal  @map("cost_price") @db.Decimal(15, 2)
+  sellingPrice Decimal  @map("selling_price") @db.Decimal(15, 2)
+  currentStock Decimal  @default(0) @map("current_stock") @db.Decimal(15, 2)
+  reorderLevel Decimal? @map("reorder_level") @db.Decimal(15, 2)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  invoiceItems   InvoiceItem[]
+  stockMovements StockMovement[]
+
+  @@unique([businessId, sku])
+  @@index([businessId])
+  @@index([sku])
+  @@index([businessId, isActive])
+  @@map("products")
+}
+
+model Party {
+  id             String      @id @default(uuid()) @db.Uuid
+  businessId     String?     @map("business_id") @db.Uuid
+  business       Business?   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  partyType      PartyType   @map("party_type")
+  partyCode      String?     @map("party_code") @db.VarChar(50)
+  name           String      @db.VarChar(255)
+  contactPerson  String?     @map("contact_person") @db.VarChar(255)
+  phone          String?     @db.VarChar(50)
+  email          String?     @db.VarChar(255)
+  address        String?     @db.Text
+  taxId          String?     @map("tax_id") @db.VarChar(100)
+  openingBalance Decimal     @default(0) @map("opening_balance") @db.Decimal(15, 2)
+  balanceType    BalanceType? @map("balance_type")
+  currentBalance Decimal     @default(0) @map("current_balance") @db.Decimal(15, 2)
+  creditLimit    Decimal?    @map("credit_limit") @db.Decimal(15, 2)
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at")
+
+  salaryConfiguration SalaryConfiguration?
+  invoices            Invoice[]
+  expenseInvoiceItems ExpenseInvoiceItem[]
+  journalEntryLines   JournalEntryLine[]
+  cashFlows           CashFlowTransaction[]
+
+  @@unique([businessId, partyCode])
+  @@index([businessId])
+  @@index([partyType])
+  @@index([partyCode])
+  @@map("parties")
+}
+
+model SalaryConfiguration {
+  id                 String          @id @default(uuid()) @db.Uuid
+  partyId            String?         @unique @map("party_id") @db.Uuid
+  party              Party?          @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  salaryAmount       Decimal         @map("salary_amount") @db.Decimal(15, 2)
+  salaryFrequency    SalaryFrequency @map("salary_frequency")
+  startDate          DateTime        @map("start_date") @db.Date
+  endDate            DateTime?       @map("end_date") @db.Date
+  autoGenerateInvoice Boolean        @default(true) @map("auto_generate_invoice")
+  invoiceDay         Int?            @map("invoice_day")
+  lastInvoiceDate    DateTime?       @map("last_invoice_date") @db.Date
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  @@map("salary_configurations")
+}
+
+model ExpenseCategory {
+  id               String   @id @default(uuid()) @db.Uuid
+  businessId       String?  @map("business_id") @db.Uuid
+  business         Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  categoryName     String   @map("category_name") @db.VarChar(100)
+  categoryCode     String   @map("category_code") @db.VarChar(20)
+  accountId        String?  @map("account_id") @db.Uuid
+  account          Account? @relation(fields: [accountId], references: [id])
+  description      String?  @db.Text
+  isSystemCategory Boolean  @default(false) @map("is_system_category")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+
+  invoices            Invoice[]
+  expenseInvoiceItems ExpenseInvoiceItem[]
+
+  @@unique([businessId, categoryName])
+  @@map("expense_categories")
+}
+
+model Invoice {
+  id                 String        @id @default(uuid()) @db.Uuid
+  businessId         String?       @map("business_id") @db.Uuid
+  business           Business?     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoiceNumber      String        @map("invoice_number") @db.VarChar(100)
+  invoiceType        InvoiceType   @map("invoice_type")
+  paymentType        PaymentType   @map("payment_type")
+  partyId            String?       @map("party_id") @db.Uuid
+  party              Party?        @relation(fields: [partyId], references: [id])
+  expenseCategoryId  String?       @map("expense_category_id") @db.Uuid
+  expenseCategory    ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+  
+  invoiceDate        DateTime      @map("invoice_date") @db.Date
+  dueDate            DateTime?     @map("due_date") @db.Date
+  
+  subtotal           Decimal       @default(0) @db.Decimal(15, 2)
+  taxAmount          Decimal       @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  discountAmount     Decimal       @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  totalAmount        Decimal       @map("total_amount") @db.Decimal(15, 2)
+  paidAmount         Decimal       @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  
+  status             InvoiceStatus @default(PENDING)
+  
+  isRecurring        Boolean       @default(false) @map("is_recurring")
+  recurringFrequency String?       @map("recurring_frequency") @db.VarChar(20)
+  nextRecurrenceDate DateTime?     @map("next_recurrence_date") @db.Date
+  
+  referenceInvoiceId String?       @map("reference_invoice_id") @db.Uuid
+  referenceInvoice   Invoice?      @relation("InvoiceReferences", fields: [referenceInvoiceId], references: [id])
+  referencedBy       Invoice[]     @relation("InvoiceReferences")
+  
+  notes              String?       @db.Text
+  createdBy          String?       @map("created_by") @db.Uuid
+  user               User?         @relation(fields: [createdBy], references: [id])
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  invoiceItems       InvoiceItem[]
+  expenseInvoiceItems ExpenseInvoiceItem[]
+  expenseInvoicePayments ExpenseInvoicePayment[]
+
+  @@unique([businessId, invoiceNumber])
+  @@index([businessId])
+  @@index([invoiceNumber])
+  @@index([invoiceType])
+  @@index([invoiceDate])
+  @@index([partyId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  invoiceId       String?  @map("invoice_id") @db.Uuid
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId       String?  @map("product_id") @db.Uuid
+  product         Product? @relation(fields: [productId], references: [id])
+  description     String?  @db.VarChar(255)
+  quantity        Decimal  @db.Decimal(15, 2)
+  unitPrice       Decimal  @map("unit_price") @db.Decimal(15, 2)
+  discountPercent Decimal? @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  taxPercent      Decimal? @default(0) @map("tax_percent") @db.Decimal(5, 2)
+  lineTotal       Decimal  @map("line_total") @db.Decimal(15, 2)
+  costPrice       Decimal? @map("cost_price") @db.Decimal(15, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([invoiceId])
+  @@index([productId])
+  @@map("invoice_items")
+}
+
+model ExpenseInvoiceItem {
+  id                String   @id @default(uuid()) @db.Uuid
+  invoiceId         String?  @map("invoice_id") @db.Uuid
+  invoice           Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  expenseCategoryId String?  @map("expense_category_id") @db.Uuid
+  expenseCategory   ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+  partyId           String?  @map("party_id") @db.Uuid
+  party             Party?   @relation(fields: [partyId], references: [id])
+  description       String   @db.VarChar(255)
+  quantity          Decimal? @default(1) @db.Decimal(15, 2)
+  rate              Decimal? @db.Decimal(15, 2)
+  amount            Decimal  @db.Decimal(15, 2)
+  periodFrom        DateTime? @map("period_from") @db.Date
+  periodTo          DateTime? @map("period_to") @db.Date
+  meterReadingStart String?  @map("meter_reading_start") @db.VarChar(50)
+  meterReadingEnd   String?  @map("meter_reading_end") @db.VarChar(50)
+  unitsConsumed     Decimal? @map("units_consumed") @db.Decimal(15, 2)
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([invoiceId])
+  @@index([expenseCategoryId])
+  @@map("expense_invoice_items")
+}
+
+model ExpenseInvoicePayment {
+  id              String        @id @default(uuid()) @db.Uuid
+  invoiceId       String?       @map("invoice_id") @db.Uuid
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentDate     DateTime      @map("payment_date") @db.Date
+  paymentMethod   PaymentMethod @map("payment_method")
+  amount          Decimal       @db.Decimal(15, 2)
+  referenceNumber String?       @map("reference_number") @db.VarChar(100)
+  bankName        String?       @map("bank_name") @db.VarChar(100)
+  notes           String?       @db.Text
+  createdBy       String?       @map("created_by") @db.Uuid
+  user            User?         @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@map("expense_invoice_payments")
+}
+
+model JournalEntry {
+  id                String    @id @default(uuid()) @db.Uuid
+  businessId        String?   @map("business_id") @db.Uuid
+  business          Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  entryNumber       String?   @map("entry_number") @db.VarChar(100)
+  entryDate         DateTime  @map("entry_date") @db.Date
+  referenceType     String?   @map("reference_type") @db.VarChar(50)
+  referenceId       String?   @map("reference_id") @db.Uuid
+  description       String?   @db.Text
+  isSystemGenerated Boolean?  @default(true) @map("is_system_generated")
+  isPosted          Boolean?  @default(false) @map("is_posted")
+  postedAt          DateTime? @map("posted_at")
+  createdBy         String?   @map("created_by") @db.Uuid
+  user              User?     @relation(fields: [createdBy], references: [id])
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  lines             JournalEntryLine[]
+
+  @@index([businessId])
+  @@index([entryDate])
+  @@index([referenceType, referenceId])
+  @@map("journal_entries")
+}
+
+model JournalEntryLine {
+  id             String       @id @default(uuid()) @db.Uuid
+  journalEntryId String?      @map("journal_entry_id") @db.Uuid
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String?      @map("account_id") @db.Uuid
+  account        Account?     @relation(fields: [accountId], references: [id])
+  partyId        String?      @map("party_id") @db.Uuid
+  party          Party?       @relation(fields: [partyId], references: [id])
+  debitAmount    Decimal?     @default(0) @map("debit_amount") @db.Decimal(15, 2)
+  creditAmount   Decimal?     @default(0) @map("credit_amount") @db.Decimal(15, 2)
+  description    String?      @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@index([partyId])
+  @@map("journal_entry_lines")
+}
+
+model StockMovement {
+  id            String            @id @default(uuid()) @db.Uuid
+  productId     String?           @map("product_id") @db.Uuid
+  product       Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movementType  StockMovementType @map("movement_type")
+  referenceType String?           @map("reference_type") @db.VarChar(50)
+  referenceId   String?           @map("reference_id") @db.Uuid
+  quantity      Decimal           @db.Decimal(15, 2)
+  costPrice     Decimal?          @map("cost_price") @db.Decimal(15, 2)
+  balanceBefore Decimal           @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter  Decimal           @map("balance_after") @db.Decimal(15, 2)
+  movementDate  DateTime          @map("movement_date") @db.Date
+  notes         String?           @db.Text
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@index([movementDate])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+model CashFlowTransaction {
+  id              String          @id @default(uuid()) @db.Uuid
+  businessId      String?         @map("business_id") @db.Uuid
+  business        Business?       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactionType TransactionType @map("transaction_type")
+  flowCategory    String          @map("flow_category") @db.VarChar(50)
+  fromAccountId   String?         @map("from_account_id") @db.Uuid
+  fromAccount     Account?        @relation("CashFlowFrom", fields: [fromAccountId], references: [id])
+  toAccountId     String?         @map("to_account_id") @db.Uuid
+  toAccount       Account?        @relation("CashFlowTo", fields: [toAccountId], references: [id])
+  partyId         String?         @map("party_id") @db.Uuid
+  party           Party?          @relation(fields: [partyId], references: [id])
+  amount          Decimal         @db.Decimal(15, 2)
+  transactionDate DateTime        @map("transaction_date") @db.Date
+  referenceNumber String?         @map("reference_number") @db.VarChar(100)
+  description     String?         @db.Text
+  createdBy       String?         @map("created_by") @db.Uuid
+  user            User?           @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@index([transactionDate])
+  @@index([fromAccountId, toAccountId])
+  @@map("cash_flow_transactions")
+}
+
+model CapitalTransaction {
+  id              String                 @id @default(uuid()) @db.Uuid
+  businessId      String?                @map("business_id") @db.Uuid
+  business        Business?              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactionType CapitalTransactionType @map("transaction_type")
+  amount          Decimal                @db.Decimal(15, 2)
+  transactionDate DateTime               @map("transaction_date") @db.Date
+  description     String?                @db.Text
+  createdBy       String?                @map("created_by") @db.Uuid
+  user            User?                  @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime               @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@index([transactionDate])
+  @@map("capital_transactions")
+}
